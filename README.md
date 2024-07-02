@@ -1,6 +1,6 @@
 # GCN4MOL
 
-GCN4MOL is a project that demonstrates how to use Graph Convolutional Networks (GCNs) for molecular property prediction. The repository contains three main scripts: `smiles2graph.py`, `train_gcn.py`, and `test_gcn.py`. These scripts are used to convert SMILES strings to graph data, train a GCN model, and evaluate the model's performance, respectively.
+GCN4MOL is a project that demonstrates how to use Graph Convolutional Network (GCN) for molecular property prediction. The repository contains three main scripts: `smiles2graph.py`, `train_gcn.py`, and `test_gcn.py`. These scripts are used to convert SMILES strings to graph data, train a GCN model, and evaluate the model's performance, respectively.
 
 ## Overview
 
