@@ -21,7 +21,7 @@ class SimpleGCN(torch.nn.Module):
         x = self.out(x)
         return x
 
-def train_model(num_epochs=1000, batch_size=1, learning_rate=0.01):
+def train_model(num_epochs=50, batch_size=32, learning_rate=0.01):
     # 加载之前保存的图数据，包括目标标签
     graph_data_list = torch.load('molecular_graphs_with_labels.pt')
 
