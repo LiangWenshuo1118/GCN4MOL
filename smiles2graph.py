@@ -1,72 +1,76 @@
+import numpy as np
 import torch
-import torch.nn.functional as F
-import torch.nn as nn
-from torch_geometric.loader import DataLoader
-from torch_geometric.nn import GCNConv, global_mean_pool
+from rdkit import Chem
+from torch_geometric.data import Data
+import pandas as pd
 
-class SimpleGCN(torch.nn.Module):
+def one_hot_encoding(x, permitted_list):
+    if x not in permitted_list:
+        x = permitted_list[-1]
+    return [int(x == s) for s in permitted_list]
+
+def get_atom_features(atom, use_chirality=True, hydrogens_implicit=True):
+    permitted_list_of_atoms = ['C', 'N', 'O', 'S', 'F', 'Si', 'P', 'Cl', 'Br', 'Mg', 'Na', 'Ca', 'Fe', 'As', 'Al', 'I',
+                               'B', 'V', 'K', 'Tl', 'Yb', 'Sb', 'Sn', 'Ag', 'Pd', 'Co', 'Se', 'Ti', 'Zn', 'Li', 'Ge',
+                               'Cu', 'Au', 'Ni', 'Cd', 'In', 'Mn', 'Zr', 'Cr', 'Pt', 'Hg', 'Pb', 'Unknown']
+    if not hydrogens_implicit:
+        permitted_list_of_atoms = ['H'] + permitted_list_of_atoms
+
+    atom_type_enc = one_hot_encoding(atom.GetSymbol(), permitted_list_of_atoms)
+    n_heavy_neighbors_enc = one_hot_encoding(atom.GetDegree(), [0, 1, 2, 3, 4, "MoreThanFour"])
+    formal_charge_enc = one_hot_encoding(atom.GetFormalCharge(), [-3, -2, -1, 0, 1, 2, 3, "Extreme"])
+    hybridisation_type_enc = one_hot_encoding(str(atom.GetHybridization()), ["S", "SP", "SP2", "SP3", "SP3D", "SP3D2", "OTHER"])
+    is_in_a_ring_enc = [atom.IsInRing()]
+    is_aromatic_enc = [atom.GetIsAromatic()]
+    atomic_mass_scaled = [(atom.GetMass() - 10.812) / 116.092]
+    vdw_radius_scaled = [(Chem.GetPeriodicTable().GetRvdw(atom.GetAtomicNum()) - 1.5) / 0.6]
+    covalent_radius_scaled = [(Chem.GetPeriodicTable().GetRcovalent(atom.GetAtomicNum()) - 0.64) / 0.76]
+    atom_features = atom_type_enc + n_heavy_neighbors_enc + formal_charge_enc + hybridisation_type_enc + is_in_a_ring_enc + is_aromatic_enc + atomic_mass_scaled + vdw_radius_scaled + covalent_radius_scaled
+
+    if use_chirality:
+        chirality_type_enc = one_hot_encoding(str(atom.GetChiralTag()), ["CHI_UNSPECIFIED", "CHI_TETRAHEDRAL_CW", "CHI_TETRAHEDRAL_CCW", "CHI_OTHER"])
+        atom_features += chirality_type_enc
+
+    if hydrogens_implicit:
+        n_hydrogens_enc = one_hot_encoding(atom.GetTotalNumHs(), [0, 1, 2, 3, 4, "MoreThanFour"])
+        atom_features += n_hydrogens_enc
+
+    return np.array(atom_features, dtype=np.float32)
+
+def create_graph_data_from_smiles(smiles_list, target_list):
     """
-    简单的图卷积网络模型。
+    将SMILES字符串列表和对应的目标标签列表转换为图数据对象列表。
     """
-    def __init__(self, num_node_features, hidden_channels):
-        super(SimpleGCN, self).__init__()
-        self.conv1 = GCNConv(num_node_features, hidden_channels)
-        self.conv2 = GCNConv(hidden_channels, hidden_channels)
-        self.out = nn.Linear(hidden_channels, 1)
+    data_list = []
+    for smiles, target in zip(smiles_list, target_list):
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is None:
+            continue  # 如果SMILES无效，则跳过
 
-    def forward(self, x, edge_index, batch):
-        x = F.relu(self.conv1(x, edge_index))
-        x = F.relu(self.conv2(x, edge_index))
-        x = global_mean_pool(x, batch)
-        x = self.out(x)
-        return x
+        n_atoms = mol.GetNumAtoms()
+        atom_features = np.array([get_atom_features(atom) for atom in mol.GetAtoms()])
+        edge_index = []
+        for bond in mol.GetBonds():
+            start, end = bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()
+            edge_index += [[start, end], [end, start]]
+        edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
+        target = torch.tensor([target], dtype=torch.float)
 
-def train_model(num_epochs=50, batch_size=32, learning_rate=0.01):
-    # 加载之前保存的图数据，包括目标标签
-    graph_data_list = torch.load('molecular_graphs_with_labels.pt')
+        data = Data(x=torch.tensor(atom_features, dtype=torch.float), edge_index=edge_index, y=target)
+        data_list.append(data)
 
-    # 数据分割
-    num_data = len(graph_data_list)
-    num_train = int(num_data * 0.8)
-    train_data_list = graph_data_list[:num_train]
-    test_data_list = graph_data_list[num_train:]
+    return data_list
 
-    # 创建DataLoader
-    train_loader = DataLoader(train_data_list, batch_size=batch_size, shuffle=True)
-    test_loader = DataLoader(test_data_list, batch_size=batch_size, shuffle=False)
+# 读取 CSV 文件，skiprows 用于跳过第一行
+df = pd.read_csv('BradleyMeltingPointDatasetClean.csv', skiprows=0)
+# 定义要转换的SMILES字符串及其对应的目标值
+#smiles_list = ['C1CCC(=CC1)CCN', 'CC(C)(C)OC(=O)N1CCC(CC1)OCC(=O)NC', 'CCCO', 'CCCCCCCCCCCCCCCO', 'CCCCCCCCN']
+#target_list = [-55,95,86,58,-127,46,-1]
+smiles_list = df.iloc[:, 1]
+target_list = df.iloc[:, 2]
 
-    # 初始化模型
-    num_node_features = train_data_list[0].num_node_features
-    model = SimpleGCN(num_node_features=num_node_features, hidden_channels=64)
+# 转换SMILES到图数据
+graph_data_list = create_graph_data_from_smiles(smiles_list, target_list)
 
-    # 定义损失函数和优化器
-    loss_func = nn.MSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-
-    # 训练模型
-    for epoch in range(num_epochs):
-        model.train()
-        total_loss = 0
-        for batch in train_loader:
-            out = model(batch.x, batch.edge_index, batch.batch)
-            loss = loss_func(out.squeeze(), batch.y)
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            total_loss += loss.item()
-
-        # 测试模型
-        model.eval()
-        total_test_loss = 0
-        with torch.no_grad():
-            for batch in test_loader:
-                out = model(batch.x, batch.edge_index, batch.batch)
-                loss = loss_func(out.squeeze(), batch.y)
-                total_test_loss += loss.item()
-        print(f'Epoch {epoch+1}/{num_epochs}, Train Loss: {total_loss / len(train_loader)}, Test Loss: {total_test_loss / len(test_loader)}')
-
-    # 保存训练好的模型
-    torch.save(model.state_dict(), 'trained_model.pth')
-
-if __name__ == "__main__":
-    train_model()
+# 将图数据保存为文件
+torch.save(graph_data_list, 'molecular_graphs_with_labels.pt')
