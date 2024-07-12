@@ -56,7 +56,31 @@ This script evaluates the trained GCN model on a test dataset. Key functionaliti
 - Python 3.x
 - RDKit
 - PyTorch
+
+1. Install torch for macOS
+```
+$ MACOSX_DEPLOYMENT_TARGET=12.5 CC=clang CXX=clang++ python -m pip --no-cache-dir install torch torchvision torchaudio
+```
+Here you can replace MACOSX_DEPLOYMENT_TARGET=12.X with the correct OS version you have
+
+2. Check which torch version you have
+```
+$ python -c "import torch; print(torch.__version__)"
+>>> 2.3.1 (must be 1.12.0+)
+```
+It does not matter which version of torch you have as long as it is 1.12.0 and up.
+
 - PyTorch Geometric
+  
+1. Install torch-geometric
+```
+$ MACOSX_DEPLOYMENT_TARGET=12.5 CC=clang CXX=clang++ python -m pip --no-cache-dir  install  torch-scatter -f https://data.pyg.org/whl/torch-2.3.1+${cpu}.html
+$ MACOSX_DEPLOYMENT_TARGET=12.5 CC=clang CXX=clang++ python -m pip --no-cache-dir  install  torch-sparse -f https://data.pyg.org/whl/torch-2.3.1+${cpu}.html
+$ MACOSX_DEPLOYMENT_TARGET=12.5 CC=clang CXX=clang++ python -m pip --no-cache-dir  install  torch-cluster -f https://data.pyg.org/whl/torch-2.3.1+${cpu}.html
+$ MACOSX_DEPLOYMENT_TARGET=12.5 CC=clang CXX=clang++ python -m pip --no-cache-dir  install  torch-geometric
+```
+Make sure to specify the right version of MACOSX_DEPLOYMENT_TARGET and the right torch version in link to the wheels build https://data.pyg.org/whl/torch-2.3.1+${cpu}.html.
+
 - scikit-learn
 - matplotlib
 - pandas
